@@ -1,0 +1,61 @@
+from flask import Flask, request, jsonify, send_file
+from flask_cors import CORS
+import os
+from embedder import get_embedding
+from video_processor import process_video
+import cv2
+
+app = Flask(__name__)
+CORS(app, origins="*")
+
+UPLOAD_FOLDER = './uploads'
+OUTPUT_FOLDER = './outputs'
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
+os.makedirs(OUTPUT_FOLDER, exist_ok=True)
+
+@app.route('/')
+def home():
+    return jsonify({'status': 'Sanjay backend is running!'})
+
+@app.route('/process', methods=['POST', 'OPTIONS'])
+def process():
+    if request.method == 'OPTIONS':
+        return '', 200
+
+    if 'reference' not in request.files or 'video' not in request.files:
+        return jsonify({'error': 'Missing files'}), 400
+
+    ref_image = request.files['reference']
+    video = request.files['video']
+
+    ref_path = os.path.join(UPLOAD_FOLDER, 'ref.jpg')
+    vid_path = os.path.join(UPLOAD_FOLDER, 'input.mp4')
+    out_path = os.path.join(OUTPUT_FOLDER, 'output.mp4')
+
+    ref_image.save(ref_path)
+    video.save(vid_path)
+
+    ref_frame = cv2.imread(ref_path)
+    if ref_frame is None:
+        return jsonify({'error': 'Could not read reference image'}), 400
+
+    ref_emb = get_embedding(ref_frame)
+    if ref_emb is None:
+        return jsonify({'error': 'No face found in reference image'}), 400
+
+    timestamps = process_video(vid_path, ref_emb, out_path)
+
+    return jsonify({
+        'timestamps': timestamps,
+        'output_video': '/download'
+    })
+
+@app.route('/download')
+def download():
+    out_path = os.path.abspath('./outputs/output.mp4')
+    if not os.path.exists(out_path):
+        return jsonify({'error': 'Output file not found'}), 404
+    return send_file(out_path, as_attachment=True)
+
+if __name__ == '__main__':
+    app.run(debug=True, port=5000, host='0.0.0.0')

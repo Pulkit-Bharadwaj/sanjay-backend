@@ -1,0 +1,9 @@
+flask
+flask-cors
+opencv-python-headless
+mediapipe
+numpy
+deepface
+onnxruntime
+tf-keras
+gunicorn
