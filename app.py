@@ -1,14 +1,17 @@
 import os
 import sys
 
-# 1. Force OpenCV and QT to run in offscreen mode
+# 1. Force OpenCV and QT to run in offscreen headless mode
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
-# 2. Complete suppression of loading errors
+# 2. Wrap ALL core imports together inside a protected check
 try:
     import cv2
+    import numpy as np
+    import tempfile
 except Exception as e:
     pass
+
 import streamlit as st
 import cv2
 import numpy as np
