@@ -1,9 +1,15 @@
 from flask import Flask, request, jsonify, send_file
 from flask_cors import CORS
 import os
-from embedder import get_embedding
-from video_processor import process_video
 import cv2
+
+# Pre-load model when server starts (not on first request)
+print("Pre-loading FaceNet model...")
+from embedder import get_embedding
+import numpy as np
+dummy = np.zeros((100, 100, 3), dtype=np.uint8)
+get_embedding(dummy)
+print("Model loaded successfully!")
 
 app = Flask(__name__)
 CORS(app, origins="*")
@@ -41,21 +47,3 @@ def process():
 
     ref_emb = get_embedding(ref_frame)
     if ref_emb is None:
-        return jsonify({'error': 'No face found in reference image'}), 400
-
-    timestamps = process_video(vid_path, ref_emb, out_path)
-
-    return jsonify({
-        'timestamps': timestamps,
-        'output_video': '/download'
-    })
-
-@app.route('/download')
-def download():
-    out_path = os.path.abspath('./outputs/output.mp4')
-    if not os.path.exists(out_path):
-        return jsonify({'error': 'Output file not found'}), 404
-    return send_file(out_path, as_attachment=True)
-
-if __name__ == '__main__':
-    app.run(debug=True, port=5000, host='0.0.0.0')
