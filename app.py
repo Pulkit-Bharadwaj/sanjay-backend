@@ -1,36 +1,38 @@
 import os
 import sys
 
-# 1. Force OpenCV and QT to run in offscreen headless mode
-os.environ["QT_QPA_PLATFORM"] = "offscreen"
+# 1. CRITICAL CLOUD ENVIRONMENT FIXES (Must run before any other deep-learning imports)
+os.environ["QT_QPA_PLATFORM"] = "offscreen"   # Prevents headless Linux GUI crashes
+os.environ["TF_USE_LEGACY_KERAS"] = "1"       # Fixes the RetinaFace / Keras 3 ValueError
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'      # Mutes excessive TensorFlow warnings
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'     # Stabilizes math operations
 
-# 2. Wrap the imports inside a completely protected block
+import tempfile
+import numpy as np
+import streamlit as st
+
+# 2. SAFE INTERCEPT IMPORTS FOR HEADLESS CV2
 try:
     import cv2
-    import numpy as np
 except ImportError:
-    # If a secondary binary is missing, force Python to mock the cv2 module name
-    import sys
     from types import ModuleType
     sys.modules['cv2'] = ModuleType('cv2')
     import cv2
 
-import streamlit as st
-import cv2
-import numpy as np
-import tempfile
-import os
 from deepface import DeepFace
 
+# Page Layout Setup
 st.set_page_config(page_title="Sanjay: AI Re-Identification", page_icon="🔍")
 st.title("🔍 Sanjay: AI Re-Identification")
 st.write("Upload a reference photo and a video to identify the person.")
 
 def get_embedding(image_bgr):
     try:
+        # Changed model_name to ArcFace to fit project requirements and save memory
         result = DeepFace.represent(
             img_path=image_bgr,
-            model_name='Facenet',
+            model_name='ArcFace',
+            detector_backend='mediapipe',  # Explicitly uses MediaPipe as per synopsis
             enforce_detection=False
         )
         if result:
@@ -44,6 +46,7 @@ def cosine_similarity(e1, e2):
     e2 = e2 / np.linalg.norm(e2)
     return float(np.dot(e1, e2))
 
+# Streamlit Media Upload Layout
 ref_file = st.file_uploader("📷 Upload Reference Image", type=['jpg','jpeg','png'])
 video_file = st.file_uploader("🎥 Upload Video Clip", type=['mp4','avi','mov'])
 
@@ -91,6 +94,7 @@ if ref_file and video_file:
                 if not ret:
                     break
 
+                # Frame sampling (checks every 5th frame for speed optimizations)
                 if frame_num % 5 == 0:
                     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
                     faces = face_cascade.detectMultiScale(gray, 1.1, 4)
@@ -102,13 +106,14 @@ if ref_file and video_file:
                         emb = get_embedding(face_crop)
                         if emb is not None:
                             score = cosine_similarity(ref_emb, emb)
+                            # Cosine match threshold check
                             if score >= 0.45:
                                 seconds = round(frame_num / fps, 2)
                                 timestamps.append(seconds)
-                                cv2.rectangle(frame, (x,y), (x+w,y+h), (0,255,0), 3)
+                                cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 3)
                                 cv2.putText(frame, f"MATCH {score:.2f}",
-                                    (x, y-10), cv2.FONT_HERSHEY_SIMPLEX,
-                                    0.9, (0,255,0), 2)
+                                            (x, y-10), cv2.FONT_HERSHEY_SIMPLEX,
+                                            0.9, (0, 255, 0), 2)
 
                 out.write(frame)
                 frame_num += 1
@@ -119,7 +124,10 @@ if ref_file and video_file:
 
             cap.release()
             out.release()
-            os.unlink(tmp_path)
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
 
             st.success("✅ Processing Complete!")
 
@@ -137,4 +145,7 @@ if ref_file and video_file:
                     file_name="output.mp4",
                     mime="video/mp4"
                 )
-            os.unlink(out_path)
+            try:
+                os.unlink(out_path)
+            except Exception:
+                pass
