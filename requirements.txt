@@ -1,9 +1,6 @@
-flask
-flask-cors
-opencv-python-headless==4.8.1.78
+streamlit
+opencv-python-headless
 numpy==1.26.4
 deepface==0.0.93
-tensorflow-cpu==2.16.1
-tf-keras==2.16.0
-onnxruntime==1.23.2
-gunicorn
+tensorflow-cpu
+tf-keras
