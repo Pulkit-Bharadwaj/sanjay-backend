@@ -1,11 +1,11 @@
 import os
 import sys
 
-# 1. CRITICAL CLOUD ENVIRONMENT FIXES (Must run before any other deep-learning imports)
-os.environ["QT_QPA_PLATFORM"] = "offscreen"   # Prevents headless Linux GUI crashes
-os.environ["TF_USE_LEGACY_KERAS"] = "1"       # Fixes the RetinaFace / Keras 3 ValueError
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'      # Mutes excessive TensorFlow warnings
-os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'     # Stabilizes math operations
+# 1. Force OpenCV and QT to run in offscreen headless mode safely
+os.environ["QT_QPA_PLATFORM"] = "offscreen"
+os.environ["TF_USE_LEGACY_KERAS"] = "1"
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
 import tempfile
 import numpy as np
