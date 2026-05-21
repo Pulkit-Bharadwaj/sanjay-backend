@@ -1,13 +1,13 @@
-import sys
 import os
+import sys
 
-# Trick OpenCV into thinking a headless display protocol layer is active
+# 1. Force OpenCV and QT to run in offscreen mode
 os.environ["QT_QPA_PLATFORM"] = "offscreen"
 
-# Force standard cv2 to ignore missing desktop GUI libraries
+# 2. Complete suppression of loading errors
 try:
     import cv2
-except ImportError:
+except Exception as e:
     pass
 import streamlit as st
 import cv2
