@@ -1,36 +1,47 @@
 import os
 import sys
 
-# 1. CRITICAL CLOUD ENVIRONMENT FIXES
-os.environ["QT_QPA_PLATFORM"] = "offscreen"   
-os.environ["TF_USE_LEGACY_KERAS"] = "1"       
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'      
-os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'     
+# 1. CRITICAL CLOUD ENVIRONMENT FIXES (Must remain at the absolute top)
+os.environ["QT_QPA_PLATFORM"] = "offscreen"   # Prevents headless Linux GUI crashes
+os.environ["TF_USE_LEGACY_KERAS"] = "1"       # Bypasses the RetinaFace / Keras 3 validation crash
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'      # Suppresses overwhelming TensorFlow logging data
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'     # Stabilizes math operations in cloud environments
 
 import tempfile
 import numpy as np
 import streamlit as st
 from PIL import Image
 
-# 2. FORCE EXCEPTION BYPASS ON CV2 LOADING
+# 2. RUNTIME EXCEPTION INTERCEPTION FOR HEADLESS OPENCV
 try:
     import cv2
 except Exception:
-    # If the cloud environment fails to load cv2, mock it to prevent the app from halting
     from types import ModuleType
     sys.modules['cv2'] = ModuleType('cv2')
     import cv2
 
 from deepface import DeepFace
 
-# Page Setup
+# Page Layout Setup
 st.set_page_config(page_title="Sanjay: AI Re-Identification", page_icon="🔍")
-st.title("🔍 Sanjay: AI Re-Identification")
-st.write("Upload a reference photo and a video to identify the person.")
+st.title("🔍 Sanjay - AI Based Re-identification Model")
+st.write("Upload a photo of a person to scan, track, and extract every moment they appear inside a video clip.")
+
+# --- ONBOARDING INSTRUCTION MENU EXPANDER ---
+with st.expander("ℹ️ First Time User? Click here for 3 simple steps to get started"):
+    st.write("Welcome! This app uses smart face recognition to scan videos and locate a specific person automatically.")
+    st.markdown("""
+    1. **Upload a clear photo** of the single person you want to find under the **Person's Photo** zone.
+    2. **Upload your video file** into the **Video File** zone.
+    3. **Adjust settings if needed:** *Match Accuracy (Strictness)*: Higher numbers mean less room for error (prevents matching strangers).
+        * *Processing Speed*: Bypasses frames to scan longer videos significantly faster.
+    4. Click the **Start Search Engine** button and watch the results populate!
+    """)
+# ---------------------------------------------
 
 def get_embedding(image_bgr):
     try:
-        # Using 'opencv' backend to avoid external network downblocks on the server
+        # Utilizing 'opencv' backend explicitly to bypass external web blocking layers
         result = DeepFace.represent(
             img_path=image_bgr,
             model_name='ArcFace',
@@ -48,13 +59,14 @@ def cosine_similarity(e1, e2):
     e2 = e2 / np.linalg.norm(e2)
     return float(np.dot(e1, e2))
 
+# Media Upload Channels
 ref_file = st.file_uploader("📷 Upload Reference Image", type=['jpg','jpeg','png'])
 video_file = st.file_uploader("🎥 Upload Video Clip", type=['mp4','avi','mov'])
 
 if ref_file and video_file:
     if st.button("🚀 Identify Person"):
         
-        # FIX: Open uploaded byte streams natively via PIL and safely translate to OpenCV BGR matrix
+        # Open bytes safely via Pillow streams before translating to an OpenCV BGR matrix
         pil_img = Image.open(ref_file).convert('RGB')
         open_cv_image = np.array(pil_img) 
         ref_img = cv2.cvtColor(open_cv_image, cv2.COLOR_RGB2BGR)
@@ -84,10 +96,9 @@ if ref_file and video_file:
             fourcc = cv2.VideoWriter_fourcc(*'mp4v')
             out = cv2.VideoWriter(out_path, fourcc, fps, (width, height))
 
-            # Added a direct safe download fallback path for face cascades in server environments
+            # Cascade layout validation verification checking
             cascade_path = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
             if not os.path.exists(cascade_path):
-                # Fallback to local execution workspace directory context if paths mismatch
                 cascade_path = 'haarcascade_frontalface_default.xml'
                 
             face_cascade = cv2.CascadeClassifier(cascade_path)
@@ -102,6 +113,7 @@ if ref_file and video_file:
                 if not ret:
                     break
 
+                # Process every 5th frame to run video tracking smoothly
                 if frame_num % 5 == 0:
                     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
                     faces = face_cascade.detectMultiScale(gray, 1.1, 4)
