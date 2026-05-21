@@ -1,8 +1,8 @@
 streamlit
-opencv-contrib-python-headless
-mediapipe
+opencv-python-headless
 deepface==0.0.89
 tensorflow-cpu==2.15.0
 tf-keras==2.15.0
 numpy==1.26.4
 pandas
+PILhand
