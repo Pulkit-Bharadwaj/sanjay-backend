@@ -1,9 +1,19 @@
 import os
 import sys
 
-# Standard performance optimizations for TensorFlow
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
-os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+# 1. Force OpenCV and QT to run in offscreen headless mode
+os.environ["QT_QPA_PLATFORM"] = "offscreen"
+
+# 2. Wrap the imports inside a completely protected block
+try:
+    import cv2
+    import numpy as np
+except ImportError:
+    # If a secondary binary is missing, force Python to mock the cv2 module name
+    import sys
+    from types import ModuleType
+    sys.modules['cv2'] = ModuleType('cv2')
+    import cv2
 
 import streamlit as st
 import cv2
