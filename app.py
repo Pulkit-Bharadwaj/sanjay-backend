@@ -1,3 +1,14 @@
+import sys
+import os
+
+# Trick OpenCV into thinking a headless display protocol layer is active
+os.environ["QT_QPA_PLATFORM"] = "offscreen"
+
+# Force standard cv2 to ignore missing desktop GUI libraries
+try:
+    import cv2
+except ImportError:
+    pass
 import streamlit as st
 import cv2
 import numpy as np
