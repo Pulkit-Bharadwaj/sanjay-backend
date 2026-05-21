@@ -1,9 +1,9 @@
 flask
 flask-cors
-opencv-python-headless
-mediapipe==0.10.35
+opencv-python-headless==4.8.1.78
 numpy==1.26.4
-deepface
-tf-keras
+deepface==0.0.93
+tensorflow-cpu==2.16.1
+tf-keras==2.16.0
 onnxruntime==1.26.0
 gunicorn
