@@ -1,38 +1,34 @@
 import os
 import sys
 
-# 1. Force OpenCV and QT to run in offscreen headless mode safely
-os.environ["QT_QPA_PLATFORM"] = "offscreen"
-os.environ["TF_USE_LEGACY_KERAS"] = "1"
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'
-os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
+# 1. CRITICAL CLOUD ENVIRONMENT FIXES
+os.environ["QT_QPA_PLATFORM"] = "offscreen"   # Disables visual GUI checking for cv2
+os.environ["TF_USE_LEGACY_KERAS"] = "1"       # Bypasses the RetinaFace Keras 3 validation crash
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'      # Suppresses overwhelming TensorFlow output
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'     # Stabilizes mathematical float calculations
 
 import tempfile
 import numpy as np
 import streamlit as st
+from PIL import Image
 
-# 2. SAFE INTERCEPT IMPORTS FOR HEADLESS CV2
-try:
-    import cv2
-except ImportError:
-    from types import ModuleType
-    sys.modules['cv2'] = ModuleType('cv2')
-    import cv2
+# 2. ACCURATE HEADLESS OPENCV LOADING
+import cv2
 
 from deepface import DeepFace
 
-# Page Layout Setup
+# Page Setup
 st.set_page_config(page_title="Sanjay: AI Re-Identification", page_icon="🔍")
 st.title("🔍 Sanjay: AI Re-Identification")
 st.write("Upload a reference photo and a video to identify the person.")
 
 def get_embedding(image_bgr):
     try:
-        # Changed model_name to ArcFace to fit project requirements and save memory
+        # Standardizing format translation directly for ArcFace evaluation
         result = DeepFace.represent(
             img_path=image_bgr,
             model_name='ArcFace',
-            detector_backend='mediapipe',  # Explicitly uses MediaPipe as per synopsis
+            detector_backend='mediapipe',  # Aligns with Minor Project Synopsis
             enforce_detection=False
         )
         if result:
@@ -46,22 +42,24 @@ def cosine_similarity(e1, e2):
     e2 = e2 / np.linalg.norm(e2)
     return float(np.dot(e1, e2))
 
-# Streamlit Media Upload Layout
 ref_file = st.file_uploader("📷 Upload Reference Image", type=['jpg','jpeg','png'])
 video_file = st.file_uploader("🎥 Upload Video Clip", type=['mp4','avi','mov'])
 
 if ref_file and video_file:
     if st.button("🚀 Identify Person"):
-        ref_bytes = np.asarray(bytearray(ref_file.read()), dtype=np.uint8)
-        ref_img = cv2.imdecode(ref_bytes, cv2.IMREAD_COLOR)
+        
+        # FIX: Open uploaded byte streams natively via PIL and safely translate to OpenCV BGR matrix
+        pil_img = Image.open(ref_file).convert('RGB')
+        open_cv_image = np.array(pil_img) 
+        ref_img = cv2.cvtColor(open_cv_image, cv2.COLOR_RGB2BGR)
 
-        with st.spinner("Getting reference face embedding..."):
+        with st.spinner("Extracting reference face features..."):
             ref_emb = get_embedding(ref_img)
 
         if ref_emb is None:
             st.error("❌ No face found in reference image. Try a clearer photo.")
         else:
-            st.success("✅ Reference face detected!")
+            st.success("✅ Reference face detected and vectorized!")
 
             with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tmp:
                 tmp.write(video_file.read())
@@ -80,9 +78,13 @@ if ref_file and video_file:
             fourcc = cv2.VideoWriter_fourcc(*'mp4v')
             out = cv2.VideoWriter(out_path, fourcc, fps, (width, height))
 
-            face_cascade = cv2.CascadeClassifier(
-                cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
-            )
+            # Added a direct safe download fallback path for face cascades in server environments
+            cascade_path = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
+            if not os.path.exists(cascade_path):
+                # Fallback to local execution workspace directory context if paths mismatch
+                cascade_path = 'haarcascade_frontalface_default.xml'
+                
+            face_cascade = cv2.CascadeClassifier(cascade_path)
 
             timestamps = []
             frame_num = 0
@@ -94,7 +96,6 @@ if ref_file and video_file:
                 if not ret:
                     break
 
-                # Frame sampling (checks every 5th frame for speed optimizations)
                 if frame_num % 5 == 0:
                     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
                     faces = face_cascade.detectMultiScale(gray, 1.1, 4)
@@ -106,7 +107,6 @@ if ref_file and video_file:
                         emb = get_embedding(face_crop)
                         if emb is not None:
                             score = cosine_similarity(ref_emb, emb)
-                            # Cosine match threshold check
                             if score >= 0.45:
                                 seconds = round(frame_num / fps, 2)
                                 timestamps.append(seconds)
