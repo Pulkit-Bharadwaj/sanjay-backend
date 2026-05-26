@@ -1,27 +1,31 @@
 import os
 import sys
 
-# 1. CLOUD ENVIRONMENT PERFORMANCE CONFIGURATIONS
+# 1. FORCE OFFSCREEN MODES BEFORE COMPILING ANYTHING
 os.environ["QT_QPA_PLATFORM"] = "offscreen"   
 os.environ["TF_USE_LEGACY_KERAS"] = "1"       
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'      
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'     
+
+# FIX: Force-clean any ghost or mock 'cv2' modules out of Python's runtime tracking memory
+if 'cv2' in sys.modules:
+    del sys.modules['cv2']
 
 import tempfile
 import numpy as np
 import streamlit as st
 from PIL import Image
 
-# 2. CORE ENGINE NATIVE LOADING
+# 2. STANDARD NATIVE CORE ENGINE LOAD
 import cv2
 from deepface import DeepFace
 
-# Page Layout Setup
+# Page Layout Setup 
 st.set_page_config(page_title="Sanjay: AI Re-Identification", page_icon="🔍")
 st.title("🔍 Sanjay - AI Based Re-identification Model")
 st.write("Upload a photo of a person to scan, track, and extract every moment they appear inside a video clip.")
 
-# Collapsible Instructions Drawer
+# Onboarding Instructions Panel
 with st.expander("ℹ️ First Time User? Click here for 3 simple steps to get started"):
     st.write("Welcome! This app uses smart face recognition to scan videos and locate a specific person automatically.")
     st.markdown("""
@@ -32,9 +36,7 @@ with st.expander("ℹ️ First Time User? Click here for 3 simple steps to get s
     4. Click the **Start Search Engine** button and watch the results populate!
     """)
 
-# Core Feature Vector Generator
-# Core Feature Vector Generator
-# Core Feature Vector Generator
+# Core Vector Embedding Function
 def get_embedding(image_array):
     try:
         result = DeepFace.represent(
@@ -47,7 +49,6 @@ def get_embedding(image_array):
             return np.array(result[0]['embedding'])
         return None
     except Exception as e:
-        # EXPLICIT DEBUG INTERCEPTOR: Print the background system error directly to the UI
         st.warning(f"🔧 System Diagnostic Log: {str(e)}")
         return None
 
@@ -56,14 +57,14 @@ def cosine_similarity(e1, e2):
     e2 = e2 / np.linalg.norm(e2)
     return float(np.dot(e1, e2))
 
-# User Upload UI Elements
+# Media Upload Channels
 ref_file = st.file_uploader("📷 Upload Reference Image", type=['jpg','jpeg','png'])
 video_file = st.file_uploader("🎥 Upload Video Clip", type=['mp4','avi','mov'])
 
 if ref_file and video_file:
     if st.button("🚀 Identify Person"):
         
-        # 3. CONVERT REFERENCE IMAGE NATIVELY
+        # Open bytes safely via Pillow and auto-correct smartphone rotations
         try:
             from PIL import ImageOps
             pil_img = ImageOps.exif_transpose(Image.open(ref_file))
@@ -79,114 +80,96 @@ if ref_file and video_file:
         if ref_emb is None:
             st.error("❌ Could not process reference image. Please try another clear photo.")
         else:
-            st.success("✅ Reference face successfully vectorized!")
+            st.success("✅ Reference face detected and vectorized!")
 
-            # Create cloud temporary workspace for video streaming arrays
             with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tmp:
                 tmp.write(video_file.read())
                 tmp_path = tmp.name
 
             try:
-                # Open video read/write streams
                 cap = cv2.VideoCapture(tmp_path)
                 fps = cap.get(cv2.CAP_PROP_FPS) if cap.get(cv2.CAP_PROP_FPS) != 0 else 25
                 total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
                 width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
                 height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-                # Build a temporary storage path for the generated output video file
                 out_path = os.path.join(tempfile.gettempdir(), "sanjay_output.mp4")
-                fourcc = cv2.VideoWriter_fourcc(*'mp4v') # Universal MP4 video compiler format
+                fourcc = cv2.VideoWriter_fourcc(*'mp4v')
                 out = cv2.VideoWriter(out_path, fourcc, fps, (width, height))
 
                 timestamps = []
                 frame_num = 0
-                
-                # Active progress status trackers on UI layout
-                progress_bar = st.progress(0)
-                status_text = st.empty()
+                progress = st.progress(0)
+                status = st.empty()
 
-                with st.spinner("Scanning video frames and highlighting matches..."):
-                    while cap.isOpened():
-                        ret, frame = cap.read()
-                        if not ret:
-                            break
+                while cap.isOpened():
+                    ret, frame = cap.read()
+                    if not ret:
+                        break
 
-                        # Optimization rule: Analyze 1 out of every 5 frames to maximize processing speed
-                        if frame_num % 5 == 0:
-                            try:
-                                # Convert running BGR frame array cleanly to RGB format for DeepFace extraction
-                                frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                                
-                                # Use cloud-safe MediaPipe backend to find facial regions in the frame
-                                faces_detected = DeepFace.extract_faces(
-                                    img_path=frame_rgb,
-                                    detector_backend='mediapipe',
-                                    enforce_detection=False
-                                )
-                                
-                                for face_obj in faces_detected:
-                                    if face_obj['confidence'] > 0.4:
-                                        facial_area = face_obj['facial_area']
-                                        x, y, w, h = facial_area['x'], facial_area['y'], facial_area['w'], facial_area['h']
+                    # Process every 5th frame for speed optimization
+                    if frame_num % 5 == 0:
+                        try:
+                            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                            
+                            # Use MediaPipe for robust face localization in video streams
+                            faces_detected = DeepFace.extract_faces(
+                                img_path=frame_rgb,
+                                detector_backend='mediapipe',
+                                enforce_detection=False
+                            )
+                            
+                            for face_obj in faces_detected:
+                                if face_obj['confidence'] > 0.4:
+                                    facial_area = face_obj['facial_area']
+                                    x, y, w, h = facial_area['x'], facial_area['y'], facial_area['w'], facial_area['h']
+                                    
+                                    face_crop_rgb = frame_rgb[y:y+h, x:x+w]
+                                    if face_crop_rgb.size == 0:
+                                        continue
                                         
-                                        # Cut face target array slice natively from the frame
-                                        face_crop_rgb = frame_rgb[y:y+h, x:x+w]
-                                        if face_crop_rgb.size == 0:
-                                            continue
-                                            
-                                        emb = get_embedding(face_crop_rgb)
-                                        if emb is not None:
-                                            score = cosine_similarity(ref_emb, emb)
-                                            
-                                            # Match verification threshold evaluation logic
-                                            if score >= 0.42:  
-                                                seconds = round(frame_num / fps, 2)
-                                                timestamps.append(seconds)
-                                                
-                                                # Draw green highlighted tracker box directly onto the frame
-                                                cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 3)
-                                                cv2.putText(frame, f"MATCH {score:.2f}",
-                                                            (x, y-10), cv2.FONT_HERSHEY_SIMPLEX,
-                                                            0.9, (0, 255, 0), 2)
-                            except Exception:
-                                pass
+                                    emb = get_embedding(face_crop_rgb)
+                                    if emb is not None:
+                                        score = cosine_similarity(ref_emb, emb)
+                                        if score >= 0.42:  
+                                            seconds = round(frame_num / fps, 2)
+                                            timestamps.append(seconds)
+                                            cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 3)
+                                            cv2.putText(frame, f"MATCH {score:.2f}",
+                                                        (x, y-10), cv2.FONT_HERSHEY_SIMPLEX,
+                                                        0.9, (0, 255, 0), 2)
+                        except Exception:
+                            pass
 
-                        # Feed frame matrix forward into target download file assembly line
-                        out.write(frame)
-                        frame_num += 1
+                    out.write(frame)
+                    frame_num += 1
 
-                        # Keep the UI progress bar ticking actively
-                        if total_frames > 0:
-                            progress_bar.progress(min(frame_num / total_frames, 1.0))
-                            status_text.text(f"Processing clip frame: {frame_num} / {total_frames}")
+                    if total_frames > 0:
+                        progress.progress(min(frame_num / total_frames, 1.0))
+                        status.text(f"Processing frame {frame_num}/{total_frames}")
 
-                # Safely release hardware video threads from container memory
                 cap.release()
                 out.release()
                 
-                st.success("✅ Analysis Complete! Target identity tracking rendered successfully.")
+                st.success("✅ Processing Complete!")
 
-                # Display Timestamp Logs
                 if timestamps:
                     unique_times = sorted(set(timestamps))
                     st.write("### 🕐 Person appears at:")
                     st.write(", ".join([f"{t}s" for t in unique_times]))
                 else:
-                    st.warning("⚠️ Person not identified inside the uploaded video clip sample context.")
+                    st.warning("⚠️ Person not found in video.")
 
-                # 4. DOWNLOAD INTERFACE RENDERING
-                with open(out_path, 'rb') as compiled_file:
+                with open(out_path, 'rb') as f:
                     st.download_button(
-                        label="⬇️ Download Highlighted Video",
-                        data=compiled_file,
-                        file_name="reidentified_output.mp4",
+                        label="⬇️ Download Processed Video",
+                        data=f,
+                        file_name="output.mp4",
                         mime="video/mp4"
                     )
-            except Exception as e:
-                st.error(f"❌ Video rendering thread encountered a layout error: {str(e)}")
+            except Exception as main_err:
+                st.error(f"❌ Video rendering error: {str(main_err)}")
             finally:
-                # Hard cleanup of file arrays to keep container storage usage optimized
                 try:
                     os.unlink(tmp_path)
                     os.unlink(out_path)
