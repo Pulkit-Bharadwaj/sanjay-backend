@@ -1,19 +1,20 @@
 import os
 import sys
 
-# 1. CRITICAL DEEP LEARNING FRAMEWORK INTERCEPT OVERRIDES
-# Force TensorFlow into Keras legacy alignment profiles before importing anything else
+# 1. FORCE CORE ENVIRONMENT VARIABLES BEFORE ANY ENGINE AWAKENS
 os.environ["TF_USE_LEGACY_KERAS"] = "1"       
 os.environ["TF_AUTOGRAPH_IMPLEMENTATION"] = "1"
 os.environ["QT_QPA_PLATFORM"] = "offscreen"   
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'      
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'     
 
-# MONKEY PATCH: Inject missing registration attributes if Keras/TensorFlow versions conflict
+# 2. DEFINITIVE DEEP LEARNING VERSION INTERCEPT PATCH
+# We force TensorFlow to load completely right here so our patch locks onto the main memory thread
 try:
     import tensorflow as tf
+    # Verify if the newer TensorFlow structure is missing the legacy loader function
     if hasattr(tf, "__internal__") and not hasattr(tf.__internal__, "register_load_context_function"):
-        # Create an in-memory safe mock registration pipeline context
+        # Enforce a dummy registration function globally across the system runtime
         tf.__internal__.register_load_context_function = lambda x: None
 except Exception:
     pass
@@ -23,7 +24,7 @@ import numpy as np
 import streamlit as st
 from PIL import Image
 
-# 2. STANDARD NATIVE CORE ENGINE LOAD
+# 3. NOW SAFE TO NATIVELY LOAD DEPENDENCIES
 import cv2
 from deepface import DeepFace
 
