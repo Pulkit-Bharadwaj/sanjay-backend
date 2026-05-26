@@ -2,10 +2,10 @@ import os
 import sys
 
 # 1. CRITICAL CLOUD ENVIRONMENT FIXES
-os.environ["QT_QPA_PLATFORM"] = "offscreen"   
-os.environ["TF_USE_LEGACY_KERAS"] = "1"       
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'      
-os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'     
+os.environ["QT_QPA_PLATFORM"] = "offscreen"   # Prevents headless Linux GUI checking crashes
+os.environ["TF_USE_LEGACY_KERAS"] = "1"       # Bypasses the RetinaFace / Keras 3 validation crash
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'      # Suppresses overwhelming TensorFlow output lines
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'     # Stabilizes math float calculations
 
 import tempfile
 import numpy as np
@@ -59,9 +59,15 @@ video_file = st.file_uploader("🎥 Upload Video Clip", type=['mp4','avi','mov']
 if ref_file and video_file:
     if st.button("🚀 Identify Person"):
         
-        # Open bytes safely via Pillow
-        pil_img = Image.open(ref_file).convert('RGB')
-        ref_img = np.array(pil_img)[:, :, ::-1] # Direct BGR convert
+        # Open bytes safely via Pillow and auto-correct smartphone rotations
+        try:
+            from PIL import ImageOps
+            pil_img = ImageOps.exif_transpose(Image.open(ref_file))
+        except Exception:
+            pil_img = Image.open(ref_file)
+            
+        pil_img = pil_img.convert('RGB')
+        ref_img = np.array(pil_img)[:, :, ::-1] # Direct clean BGR matrix channel conversion slice
 
         with st.spinner("Extracting reference face features..."):
             ref_emb = get_embedding(ref_img)
@@ -99,15 +105,14 @@ if ref_file and video_file:
                     # Process every 5th frame for speed optimization
                     if frame_num % 5 == 0:
                         try:
-                            # Using DeepFace's native cloud-safe extraction instead of local XML cascades
+                            # SWITCHED BACKEND: Using 'mediapipe' for flawless, zero-dependency cloud extraction
                             faces_detected = DeepFace.extract_faces(
                                 img_path=frame,
-                                detector_backend='opencv',
+                                detector_backend='mediapipe',
                                 enforce_detection=False
                             )
                             
                             for face_obj in faces_detected:
-                                # Validate detection confidence threshold
                                 if face_obj['confidence'] > 0.4:
                                     facial_area = face_obj['facial_area']
                                     x, y, w, h = facial_area['x'], facial_area['y'], facial_area['w'], facial_area['h']
@@ -119,7 +124,7 @@ if ref_file and video_file:
                                     emb = get_embedding(face_crop)
                                     if emb is not None:
                                         score = cosine_similarity(ref_emb, emb)
-                                        if score >= 0.45:
+                                        if score >= 0.42:  # Slighly optimized tolerance threshold for ArcFace
                                             seconds = round(frame_num / fps, 2)
                                             timestamps.append(seconds)
                                             cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 3)
@@ -156,8 +161,7 @@ if ref_file and video_file:
                         mime="video/mp4"
                     )
             except Exception as video_err:
-                st.warning("⚠️ Processing completed with standalone visualization channel context.")
-                st.image(pil_img, caption="Face tracking index verified successfully.", use_container_width=True)
+                st.warning("⚠️ Video processing encountered a rendering issue.")
             finally:
                 try:
                     os.unlink(tmp_path)
