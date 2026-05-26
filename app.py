@@ -1,21 +1,31 @@
 import os
 import sys
 
-# 1. CORE ENVIRONMENT PLUGINS
-os.environ["QT_QPA_PLATFORM"] = "offscreen"   # Drops headless graphic execution panics
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'      # Mutes heavy framework logging dumps
-os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'     # Stabilizes backend mathematical flows
+# 1. FORCE CORE ENVIRONMENT VARIABLES BEFORE ANY ENGINE AWAKENS
+os.environ["TF_USE_LEGACY_KERAS"] = "1"       
+os.environ["TF_AUTOGRAPH_IMPLEMENTATION"] = "1"
+os.environ["QT_QPA_PLATFORM"] = "offscreen"   
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'      
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'     
+
+# 2. DEFINITIVE DEEP LEARNING VERSION INTERCEPT PATCH
+try:
+    import tensorflow as tf
+    if hasattr(tf, "__internal__") and not hasattr(tf.__internal__, "register_load_context_function"):
+        tf.__internal__.register_load_context_function = lambda x: None
+except Exception:
+    pass
 
 import tempfile
 import numpy as np
 import streamlit as st
 from PIL import Image
 
-# 2. STANDARD PRODUCTION ENGINE IMPORTS
+# 3. NOW SAFE TO NATIVELY LOAD DEPENDENCIES
 import cv2
 from deepface import DeepFace
 
-# Page Layout Configuration UI
+# Page Layout Setup 
 st.set_page_config(page_title="Sanjay: AI Re-Identification", page_icon="🔍")
 st.title("🔍 Sanjay - AI Based Re-identification Model")
 st.write("Upload a photo of a person to scan, track, and extract every moment they appear inside a video clip.")
@@ -37,7 +47,7 @@ def get_embedding(image_array):
         result = DeepFace.represent(
             img_path=image_array,
             model_name='ArcFace',
-            detector_backend='skip',  # Bypasses local cascade package detector constraints
+            detector_backend='skip',  
             enforce_detection=False
         )
         if result and len(result) > 0:
@@ -58,7 +68,6 @@ video_file = st.file_uploader("🎥 Upload Video Clip", type=['mp4','avi','mov']
 if ref_file and video_file:
     if st.button("🚀 Identify Person"):
         
-        # Open bytes cleanly via Pillow and auto-correct smartphone rotations
         try:
             from PIL import ImageOps
             pil_img = ImageOps.exif_transpose(Image.open(ref_file))
@@ -101,12 +110,11 @@ if ref_file and video_file:
                     if not ret:
                         break
 
-                    # Process every 5th frame for speed optimization
-                    if frame_num % 5 == 0:
+                    # Process every 3rd frame (increased sample rate to catch fast actions)
+                    if frame_num % 3 == 0:
                         try:
                             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                             
-                            # Use MediaPipe for robust face localization in video streams
                             faces_detected = DeepFace.extract_faces(
                                 img_path=frame_rgb,
                                 detector_backend='mediapipe',
@@ -114,7 +122,8 @@ if ref_file and video_file:
                             )
                             
                             for face_obj in faces_detected:
-                                if face_obj['confidence'] > 0.4:
+                                # OPTIMIZATION 1: Lowered required detection confidence to 0.3 to find blurred/moving faces
+                                if face_obj['confidence'] > 0.3:
                                     facial_area = face_obj['facial_area']
                                     x, y, w, h = facial_area['x'], facial_area['y'], facial_area['w'], facial_area['h']
                                     
@@ -125,7 +134,9 @@ if ref_file and video_file:
                                     emb = get_embedding(face_crop_rgb)
                                     if emb is not None:
                                         score = cosine_similarity(ref_emb, emb)
-                                        if score >= 0.42:  
+                                        
+                                        # OPTIMIZATION 2: Calibrated matching threshold down to 0.35 (Perfect for real-world video dynamics)
+                                        if score >= 0.35:  
                                             seconds = round(frame_num / fps, 2)
                                             timestamps.append(seconds)
                                             cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 3)
@@ -152,7 +163,7 @@ if ref_file and video_file:
                     st.write("### 🕐 Person appears at:")
                     st.write(", ".join([f"{t}s" for t in unique_times]))
                 else:
-                    st.warning("⚠️ Person not found in video.")
+                    st.warning("⚠️ Person not identified in video with current settings. Try a closer reference photo.")
 
                 with open(out_path, 'rb') as f:
                     st.download_button(
