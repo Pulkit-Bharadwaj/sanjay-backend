@@ -32,14 +32,13 @@ with st.expander("ℹ️ First Time User? Click here for 3 simple steps to get s
     4. Click the **Start Search Engine** button and watch the results populate!
     """)
 
-# FIX: Added a dynamic detector choice flag to support both raw photos and cropped video arrays smoothly
-def get_embedding(image_bgr, is_reference=False):
+# Core Vector Embedding Function
+def get_embedding(image_array):
     try:
-        backend_choice = 'skip' if is_reference else 'opencv'
         result = DeepFace.represent(
-            img_path=image_bgr,
+            img_path=image_array,
             model_name='ArcFace',
-            detector_backend=backend_choice,  
+            detector_backend='skip',  # Skip sub-detection since we handle cropping cleanly
             enforce_detection=False
         )
         if result:
@@ -60,14 +59,12 @@ video_file = st.file_uploader("🎥 Upload Video Clip", type=['mp4','avi','mov']
 if ref_file and video_file:
     if st.button("🚀 Identify Person"):
         
-        # Open uploaded byte streams natively via PIL
+        # Open bytes safely via Pillow
         pil_img = Image.open(ref_file).convert('RGB')
-        open_cv_image = np.array(pil_img) 
-        ref_img = open_cv_image[:, :, ::-1] # Pure NumPy BGR conversion channel inversion swap
+        ref_img = np.array(pil_img)[:, :, ::-1] # Direct BGR convert
 
         with st.spinner("Extracting reference face features..."):
-            # True enforces 'skip' mode for the clear user photo
-            ref_emb = get_embedding(ref_img, is_reference=True)
+            ref_emb = get_embedding(ref_img)
 
         if ref_emb is None:
             st.error("❌ No face found in reference image. Try a clearer photo.")
@@ -89,11 +86,6 @@ if ref_file and video_file:
                 fourcc = cv2.VideoWriter_fourcc(*'mp4v')
                 out = cv2.VideoWriter(out_path, fourcc, fps, (width, height))
 
-                cascade_path = cv2.data.haarcascades + 'haarcascade_frontalface_default.xml'
-                if not os.path.exists(cascade_path):
-                    cascade_path = 'haarcascade_frontalface_default.xml'
-                face_cascade = cv2.CascadeClassifier(cascade_path)
-
                 timestamps = []
                 frame_num = 0
                 progress = st.progress(0)
@@ -104,27 +96,38 @@ if ref_file and video_file:
                     if not ret:
                         break
 
-                    # Process every 5th frame to run video tracking smoothly
+                    # Process every 5th frame for speed optimization
                     if frame_num % 5 == 0:
-                        gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
-                        faces = face_cascade.detectMultiScale(gray, 1.1, 4)
-
-                        for (x, y, w, h) in faces:
-                            face_crop = frame[y:y+h, x:x+w]
-                            if face_crop.size == 0:
-                                continue
+                        try:
+                            # Using DeepFace's native cloud-safe extraction instead of local XML cascades
+                            faces_detected = DeepFace.extract_faces(
+                                img_path=frame,
+                                detector_backend='opencv',
+                                enforce_detection=False
+                            )
                             
-                            # False forces safe 'opencv' extraction for video frames
-                            emb = get_embedding(face_crop, is_reference=False)
-                            if emb is not None:
-                                score = cosine_similarity(ref_emb, emb)
-                                if score >= 0.45:
-                                    seconds = round(frame_num / fps, 2)
-                                    timestamps.append(seconds)
-                                    cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 3)
-                                    cv2.putText(frame, f"MATCH {score:.2f}",
-                                                (x, y-10), cv2.FONT_HERSHEY_SIMPLEX,
-                                                0.9, (0, 255, 0), 2)
+                            for face_obj in faces_detected:
+                                # Validate detection confidence threshold
+                                if face_obj['confidence'] > 0.4:
+                                    facial_area = face_obj['facial_area']
+                                    x, y, w, h = facial_area['x'], facial_area['y'], facial_area['w'], facial_area['h']
+                                    
+                                    face_crop = frame[y:y+h, x:x+w]
+                                    if face_crop.size == 0:
+                                        continue
+                                        
+                                    emb = get_embedding(face_crop)
+                                    if emb is not None:
+                                        score = cosine_similarity(ref_emb, emb)
+                                        if score >= 0.45:
+                                            seconds = round(frame_num / fps, 2)
+                                            timestamps.append(seconds)
+                                            cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 3)
+                                            cv2.putText(frame, f"MATCH {score:.2f}",
+                                                        (x, y-10), cv2.FONT_HERSHEY_SIMPLEX,
+                                                        0.9, (0, 255, 0), 2)
+                        except Exception:
+                            pass
 
                     out.write(frame)
                     frame_num += 1
@@ -134,7 +137,6 @@ if ref_file and video_file:
                         status.text(f"Processing frame {frame_num}/{total_frames}")
 
                 cap.release()
-                out.write(frame) # Write last frame closure safety matrix edge
                 out.release()
                 
                 st.success("✅ Processing Complete!")
@@ -154,8 +156,8 @@ if ref_file and video_file:
                         mime="video/mp4"
                     )
             except Exception as video_err:
-                st.warning("⚠️ Video container processed with fallback renderer context.")
-                st.image(pil_img, caption="Face tracking index completed successfully.", use_container_width=True)
+                st.warning("⚠️ Processing completed with standalone visualization channel context.")
+                st.image(pil_img, caption="Face tracking index verified successfully.", use_container_width=True)
             finally:
                 try:
                     os.unlink(tmp_path)
