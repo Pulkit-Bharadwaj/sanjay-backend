@@ -68,10 +68,11 @@ with st.expander("ℹ️ First Time User? Click here for 3 simple steps to get s
 
 def get_embedding(image_bgr):
     try:
+        # Changed detector_backend to 'skip' to bypass missing cloud cascade XML paths
         result = DeepFace.represent(
             img_path=image_bgr,
             model_name='ArcFace',
-            detector_backend='opencv',  # Reliable, static processing structure
+            detector_backend='skip',  # Direct embedding generation without pre-detection
             enforce_detection=False
         )
         if result:
