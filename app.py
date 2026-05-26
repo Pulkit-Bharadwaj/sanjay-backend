@@ -1,25 +1,19 @@
 import os
 import sys
 
-# 1. CRITICAL CLOUD ENVIRONMENT FIXES (Must remain at the absolute top)
-os.environ["QT_QPA_PLATFORM"] = "offscreen"   # Prevents headless Linux GUI crashes
+# 1. CRITICAL CLOUD ENVIRONMENT FIXES
+os.environ["QT_QPA_PLATFORM"] = "offscreen"   # Prevents headless Linux GUI checking crashes
 os.environ["TF_USE_LEGACY_KERAS"] = "1"       # Bypasses the RetinaFace / Keras 3 validation crash
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'      # Suppresses overwhelming TensorFlow logging data
-os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'     # Stabilizes math operations in cloud environments
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'      # Suppresses overwhelming TensorFlow output lines
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'     # Stabilizes math float calculations
 
 import tempfile
 import numpy as np
 import streamlit as st
 from PIL import Image
 
-# 2. RUNTIME EXCEPTION INTERCEPTION FOR HEADLESS OPENCV
-try:
-    import cv2
-except Exception:
-    from types import ModuleType
-    sys.modules['cv2'] = ModuleType('cv2')
-    import cv2
-
+# 2. STANDARD NATIVE OPENCV LOAD
+import cv2
 from deepface import DeepFace
 
 # Page Layout Setup
@@ -66,10 +60,12 @@ video_file = st.file_uploader("🎥 Upload Video Clip", type=['mp4','avi','mov']
 if ref_file and video_file:
     if st.button("🚀 Identify Person"):
         
-        # Open bytes safely via Pillow streams before translating to an OpenCV BGR matrix
+        # Open uploaded byte streams natively via PIL
         pil_img = Image.open(ref_file).convert('RGB')
         open_cv_image = np.array(pil_img) 
-        ref_img = cv2.cvtColor(open_cv_image, cv2.COLOR_RGB2BGR)
+        
+        # FIX: Convert RGB to BGR using pure NumPy matrix manipulation (Bypasses cv2 dependency completely!)
+        ref_img = open_cv_image[:, :, ::-1]
 
         with st.spinner("Extracting reference face features..."):
             ref_emb = get_embedding(ref_img)
