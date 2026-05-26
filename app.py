@@ -1,34 +1,21 @@
 import os
 import sys
 
-# 1. FORCE CORE ENVIRONMENT VARIABLES BEFORE ANY ENGINE AWAKENS
-os.environ["TF_USE_LEGACY_KERAS"] = "1"       
-os.environ["TF_AUTOGRAPH_IMPLEMENTATION"] = "1"
-os.environ["QT_QPA_PLATFORM"] = "offscreen"   
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'      
-os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'     
-
-# 2. DEFINITIVE DEEP LEARNING VERSION INTERCEPT PATCH
-# We force TensorFlow to load completely right here so our patch locks onto the main memory thread
-try:
-    import tensorflow as tf
-    # Verify if the newer TensorFlow structure is missing the legacy loader function
-    if hasattr(tf, "__internal__") and not hasattr(tf.__internal__, "register_load_context_function"):
-        # Enforce a dummy registration function globally across the system runtime
-        tf.__internal__.register_load_context_function = lambda x: None
-except Exception:
-    pass
+# 1. CORE ENVIRONMENT PLUGINS
+os.environ["QT_QPA_PLATFORM"] = "offscreen"   # Drops headless graphic execution panics
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'      # Mutes heavy framework logging dumps
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'     # Stabilizes backend mathematical flows
 
 import tempfile
 import numpy as np
 import streamlit as st
 from PIL import Image
 
-# 3. NOW SAFE TO NATIVELY LOAD DEPENDENCIES
+# 2. STANDARD PRODUCTION ENGINE IMPORTS
 import cv2
 from deepface import DeepFace
 
-# Page Layout Setup 
+# Page Layout Configuration UI
 st.set_page_config(page_title="Sanjay: AI Re-Identification", page_icon="🔍")
 st.title("🔍 Sanjay - AI Based Re-identification Model")
 st.write("Upload a photo of a person to scan, track, and extract every moment they appear inside a video clip.")
@@ -50,7 +37,7 @@ def get_embedding(image_array):
         result = DeepFace.represent(
             img_path=image_array,
             model_name='ArcFace',
-            detector_backend='skip',  # Skip secondary checks since array parsing is direct
+            detector_backend='skip',  # Bypasses local cascade package detector constraints
             enforce_detection=False
         )
         if result and len(result) > 0:
@@ -71,7 +58,7 @@ video_file = st.file_uploader("🎥 Upload Video Clip", type=['mp4','avi','mov']
 if ref_file and video_file:
     if st.button("🚀 Identify Person"):
         
-        # Open bytes safely via Pillow and auto-correct smartphone rotations
+        # Open bytes cleanly via Pillow and auto-correct smartphone rotations
         try:
             from PIL import ImageOps
             pil_img = ImageOps.exif_transpose(Image.open(ref_file))

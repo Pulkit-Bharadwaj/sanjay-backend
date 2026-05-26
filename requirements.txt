@@ -1,6 +1,8 @@
-streamlit
-numpy
-pillow
-deepface
-mediapipe
-opencv-python-headless
+streamlit>=1.35.0
+numpy<2.0.0
+pillow>=10.0.0
+tensorflow==2.15.0
+tf-keras==2.15.0
+deepface==0.0.92
+mediapipe>=0.10.0
+opencv-python-headless>=4.8.0.0
