@@ -3,4 +3,4 @@ numpy
 pillow
 deepface
 mediapipe
-glib
+opencv-python-headless

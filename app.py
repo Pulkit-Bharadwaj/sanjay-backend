@@ -1,41 +1,18 @@
 import os
 import sys
-import ctypes
 
-# 1. DYNAMIC SYSTEM LINKER COMPILER HOTFIX (Bypasses broken apt package installers)
-try:
-    import cv2
-except ImportError:
-    # Locate the internal Linux glib shared objects inside the cloud venv
-    venv_path = os.path.join(sys.prefix, 'lib', f'python{sys.version_info.major}.{sys.version_info.minor}', 'site-packages')
-    possible_glib_bins = [
-        os.path.join(venv_path, 'glib', 'libgthread-2.0.so.0'),
-        "/usr/lib/x86_64-linux-gnu/libgthread-2.0.so.0",
-        "libgthread-2.0.so.0"
-    ]
-    for binary_path in possible_glib_bins:
-        try:
-            # Inject the multi-threading binary directly into the global execution space
-            ctypes.CDLL(binary_path, mode=ctypes.RTLD_GLOBAL)
-            break
-        except Exception:
-            continue
-
-# FORCE OFFSCREEN MODES BEFORE COMPILING ANYTHING ELSE
-os.environ["QT_QPA_PLATFORM"] = "offscreen"   
-os.environ["TF_USE_LEGACY_KERAS"] = "1"       
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'      
-os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'     
-
-if 'cv2' in sys.modules:
-    del sys.modules['cv2']
+# 1. CRITICAL CLOUD ENVIRONMENT FIXES
+os.environ["QT_QPA_PLATFORM"] = "offscreen"   # Prevents headless Linux GUI checking crashes
+os.environ["TF_USE_LEGACY_KERAS"] = "1"       # Bypasses the RetinaFace / Keras 3 validation crash
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'      # Suppresses overwhelming TensorFlow output lines
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'     # Stabilizes math float calculations
 
 import tempfile
 import numpy as np
 import streamlit as st
 from PIL import Image
 
-# 2. CORE ENGINE NATIVE SEED LOADING
+# 2. STANDARD NATIVE CORE ENGINE LOAD
 import cv2
 from deepface import DeepFace
 
@@ -61,14 +38,13 @@ def get_embedding(image_array):
         result = DeepFace.represent(
             img_path=image_array,
             model_name='ArcFace',
-            detector_backend='skip',  
+            detector_backend='skip',  # Skip secondary checks since array parsing is direct
             enforce_detection=False
         )
         if result and len(result) > 0:
             return np.array(result[0]['embedding'])
         return None
-    except Exception as e:
-        st.warning(f"🔧 System Diagnostic Log: {str(e)}")
+    except Exception:
         return None
 
 def cosine_similarity(e1, e2):
@@ -126,10 +102,12 @@ if ref_file and video_file:
                     if not ret:
                         break
 
+                    # Process every 5th frame for speed optimization
                     if frame_num % 5 == 0:
                         try:
                             frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
                             
+                            # Use MediaPipe for robust face localization in video streams
                             faces_detected = DeepFace.extract_faces(
                                 img_path=frame_rgb,
                                 detector_backend='mediapipe',
