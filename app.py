@@ -34,6 +34,7 @@ with st.expander("ℹ️ First Time User? Click here for 3 simple steps to get s
 
 # Core Feature Vector Generator
 # Core Feature Vector Generator
+# Core Feature Vector Generator
 def get_embedding(image_array):
     try:
         result = DeepFace.represent(
@@ -49,7 +50,8 @@ def get_embedding(image_array):
         # EXPLICIT DEBUG INTERCEPTOR: Print the background system error directly to the UI
         st.warning(f"🔧 System Diagnostic Log: {str(e)}")
         return None
-    def cosine_similarity(e1, e2):
+
+def cosine_similarity(e1, e2):
     e1 = e1 / np.linalg.norm(e1)
     e2 = e2 / np.linalg.norm(e2)
     return float(np.dot(e1, e2))
