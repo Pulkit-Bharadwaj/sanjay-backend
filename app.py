@@ -1,11 +1,22 @@
 import os
 import sys
 
-# 1. CRITICAL CLOUD ENVIRONMENT FIXES
-os.environ["QT_QPA_PLATFORM"] = "offscreen"   # Prevents headless Linux GUI checking crashes
-os.environ["TF_USE_LEGACY_KERAS"] = "1"       # Bypasses the RetinaFace / Keras 3 validation crash
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'      # Suppresses overwhelming TensorFlow output lines
-os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'     # Stabilizes math float calculations
+# 1. CRITICAL DEEP LEARNING FRAMEWORK INTERCEPT OVERRIDES
+# Force TensorFlow into Keras legacy alignment profiles before importing anything else
+os.environ["TF_USE_LEGACY_KERAS"] = "1"       
+os.environ["TF_AUTOGRAPH_IMPLEMENTATION"] = "1"
+os.environ["QT_QPA_PLATFORM"] = "offscreen"   
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'      
+os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'     
+
+# MONKEY PATCH: Inject missing registration attributes if Keras/TensorFlow versions conflict
+try:
+    import tensorflow as tf
+    if hasattr(tf, "__internal__") and not hasattr(tf.__internal__, "register_load_context_function"):
+        # Create an in-memory safe mock registration pipeline context
+        tf.__internal__.register_load_context_function = lambda x: None
+except Exception:
+    pass
 
 import tempfile
 import numpy as np
