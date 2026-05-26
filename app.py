@@ -1,14 +1,13 @@
 import os
 import sys
 
-# 1. FORCE CORE ENVIRONMENT VARIABLES BEFORE ANY ENGINE AWAKENS
+# 1. FORCE CORE ENVIRONMENT VARIABLES
 os.environ["TF_USE_LEGACY_KERAS"] = "1"       
 os.environ["TF_AUTOGRAPH_IMPLEMENTATION"] = "1"
 os.environ["QT_QPA_PLATFORM"] = "offscreen"   
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '2'      
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'     
 
-# 2. DEFINITIVE DEEP LEARNING VERSION INTERCEPT PATCH
 try:
     import tensorflow as tf
     if hasattr(tf, "__internal__") and not hasattr(tf.__internal__, "register_load_context_function"):
@@ -20,25 +19,19 @@ import tempfile
 import numpy as np
 import streamlit as st
 from PIL import Image
-
-# 3. NOW SAFE TO NATIVELY LOAD DEPENDENCIES
 import cv2
 from deepface import DeepFace
 
-# Page Layout Setup 
 st.set_page_config(page_title="Sanjay: AI Re-Identification", page_icon="🔍")
 st.title("🔍 Sanjay - AI Based Re-identification Model")
-st.write("Upload a photo of a person to scan, track, and extract every moment they appear inside a video clip.")
 
 # Onboarding Instructions Panel
 with st.expander("ℹ️ First Time User? Click here for 3 simple steps to get started"):
     st.write("Welcome! This app uses smart face recognition to scan videos and locate a specific person automatically.")
     st.markdown("""
-    1. **Upload a clear photo** of the single person you want to find under the **Person's Photo** zone.
-    2. **Upload your video file** into the **Video File** zone.
-    3. **Adjust settings if needed:** *Match Accuracy (Strictness)*: Higher numbers mean less room for error (prevents matching strangers).
-        * *Processing Speed*: Bypasses frames to scan longer videos significantly faster.
-    4. Click the **Start Search Engine** button and watch the results populate!
+    1. **Upload a clear photo** of the person.
+    2. **Upload your video file**.
+    3. **Note:** If the person isn't found, try a photo where the person is facing the camera directly.
     """)
 
 # Core Vector Embedding Function
@@ -47,7 +40,7 @@ def get_embedding(image_array):
         result = DeepFace.represent(
             img_path=image_array,
             model_name='ArcFace',
-            detector_backend='skip',  
+            detector_backend='skip',
             enforce_detection=False
         )
         if result and len(result) > 0:
@@ -61,13 +54,14 @@ def cosine_similarity(e1, e2):
     e2 = e2 / np.linalg.norm(e2)
     return float(np.dot(e1, e2))
 
-# Media Upload Channels
 ref_file = st.file_uploader("📷 Upload Reference Image", type=['jpg','jpeg','png'])
 video_file = st.file_uploader("🎥 Upload Video Clip", type=['mp4','avi','mov'])
 
 if ref_file and video_file:
+    # ADDED: Sensitivity Slider
+    sensitivity = st.slider("Match Sensitivity", 0.1, 0.9, 0.35, help="Lower value makes it easier to match.")
+    
     if st.button("🚀 Identify Person"):
-        
         try:
             from PIL import ImageOps
             pil_img = ImageOps.exif_transpose(Image.open(ref_file))
@@ -77,106 +71,58 @@ if ref_file and video_file:
         pil_img = pil_img.convert('RGB')
         ref_img_rgb = np.array(pil_img)
 
-        with st.spinner("Extracting reference face features..."):
+        with st.spinner("Analyzing reference..."):
             ref_emb = get_embedding(ref_img_rgb)
 
         if ref_emb is None:
-            st.error("❌ Could not process reference image. Please try another clear photo.")
+            st.error("❌ No face found in reference image.")
         else:
-            st.success("✅ Reference face detected and vectorized!")
+            st.success("✅ Reference vectorized!")
 
             with tempfile.NamedTemporaryFile(delete=False, suffix='.mp4') as tmp:
                 tmp.write(video_file.read())
                 tmp_path = tmp.name
 
-            try:
-                cap = cv2.VideoCapture(tmp_path)
-                fps = cap.get(cv2.CAP_PROP_FPS) if cap.get(cv2.CAP_PROP_FPS) != 0 else 25
-                total_frames = int(cap.get(cv2.CAP_PROP_FRAME_COUNT))
-                width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-                height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
+            cap = cv2.VideoCapture(tmp_path)
+            fps = cap.get(cv2.CAP_PROP_FPS) or 25
+            width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
+            height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
 
-                out_path = os.path.join(tempfile.gettempdir(), "sanjay_output.mp4")
-                fourcc = cv2.VideoWriter_fourcc(*'mp4v')
-                out = cv2.VideoWriter(out_path, fourcc, fps, (width, height))
+            out_path = os.path.join(tempfile.gettempdir(), "out.mp4")
+            out = cv2.VideoWriter(out_path, cv2.VideoWriter_fourcc(*'mp4v'), fps, (width, height))
 
-                timestamps = []
-                frame_num = 0
-                progress = st.progress(0)
-                status = st.empty()
+            frame_num = 0
+            timestamps = []
+            
+            while cap.isOpened():
+                ret, frame = cap.read()
+                if not ret: break
 
-                while cap.isOpened():
-                    ret, frame = cap.read()
-                    if not ret:
-                        break
+                if frame_num % 5 == 0:
+                    try:
+                        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+                        faces = DeepFace.extract_faces(frame_rgb, detector_backend='mediapipe', enforce_detection=False)
+                        
+                        for face in faces:
+                            if face['confidence'] > 0.3: # Lowered confidence requirement
+                                x, y, w, h = face['facial_area']['x'], face['facial_area']['y'], face['facial_area']['w'], face['facial_area']['h']
+                                emb = get_embedding(frame_rgb[y:y+h, x:x+w])
+                                
+                                if emb is not None and cosine_similarity(ref_emb, emb) >= sensitivity:
+                                    timestamps.append(round(frame_num / fps, 2))
+                                    cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 3)
+                    except: pass
 
-                    # Process every 3rd frame (increased sample rate to catch fast actions)
-                    if frame_num % 3 == 0:
-                        try:
-                            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-                            
-                            faces_detected = DeepFace.extract_faces(
-                                img_path=frame_rgb,
-                                detector_backend='mediapipe',
-                                enforce_detection=False
-                            )
-                            
-                            for face_obj in faces_detected:
-                                # OPTIMIZATION 1: Lowered required detection confidence to 0.3 to find blurred/moving faces
-                                if face_obj['confidence'] > 0.3:
-                                    facial_area = face_obj['facial_area']
-                                    x, y, w, h = facial_area['x'], facial_area['y'], facial_area['w'], facial_area['h']
-                                    
-                                    face_crop_rgb = frame_rgb[y:y+h, x:x+w]
-                                    if face_crop_rgb.size == 0:
-                                        continue
-                                        
-                                    emb = get_embedding(face_crop_rgb)
-                                    if emb is not None:
-                                        score = cosine_similarity(ref_emb, emb)
-                                        
-                                        # OPTIMIZATION 2: Calibrated matching threshold down to 0.35 (Perfect for real-world video dynamics)
-                                        if score >= 0.35:  
-                                            seconds = round(frame_num / fps, 2)
-                                            timestamps.append(seconds)
-                                            cv2.rectangle(frame, (x, y), (x+w, y+h), (0, 255, 0), 3)
-                                            cv2.putText(frame, f"MATCH {score:.2f}",
-                                                        (x, y-10), cv2.FONT_HERSHEY_SIMPLEX,
-                                                        0.9, (0, 255, 0), 2)
-                        except Exception:
-                            pass
+                out.write(frame)
+                frame_num += 1
 
-                    out.write(frame)
-                    frame_num += 1
-
-                    if total_frames > 0:
-                        progress.progress(min(frame_num / total_frames, 1.0))
-                        status.text(f"Processing frame {frame_num}/{total_frames}")
-
-                cap.release()
-                out.release()
-                
-                st.success("✅ Processing Complete!")
-
-                if timestamps:
-                    unique_times = sorted(set(timestamps))
-                    st.write("### 🕐 Person appears at:")
-                    st.write(", ".join([f"{t}s" for t in unique_times]))
-                else:
-                    st.warning("⚠️ Person not identified in video with current settings. Try a closer reference photo.")
-
+            cap.release()
+            out.release()
+            
+            if timestamps:
+                st.success("✅ Match Found!")
+                st.write("### 🕐 Appears at:", ", ".join([f"{t}s" for t in sorted(set(timestamps))]))
                 with open(out_path, 'rb') as f:
-                    st.download_button(
-                        label="⬇️ Download Processed Video",
-                        data=f,
-                        file_name="output.mp4",
-                        mime="video/mp4"
-                    )
-            except Exception as main_err:
-                st.error(f"❌ Video rendering error: {str(main_err)}")
-            finally:
-                try:
-                    os.unlink(tmp_path)
-                    os.unlink(out_path)
-                except Exception:
-                    pass
+                    st.download_button("⬇️ Download Result", f, "output.mp4", "video/mp4")
+            else:
+                st.warning("⚠️ No match found. Try uploading a clearer reference photo or lowering the 'Match Sensitivity' slider.")
